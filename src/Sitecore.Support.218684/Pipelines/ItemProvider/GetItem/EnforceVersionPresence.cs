@@ -17,6 +17,9 @@
 
       var item = this.GetItem(args);
 
+      if (item != null)
+        Sitecore.Context.Items["sc_Support_218684_ItemResolved"] = true;
+
       args.Result = this.IsItemEnforceVersionPresenceEnabled(item) ? null : item;
     }
     private Item GetItem(GetItemArgs args)

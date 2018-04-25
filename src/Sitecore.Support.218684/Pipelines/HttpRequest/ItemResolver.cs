@@ -52,6 +52,8 @@
       {
         this.StartProfilingOperation("Resolve current item.", args);
 
+        Sitecore.Context.Items["sc_Support_218684_ItemResolved"] = false;
+
         var uniquePaths = new HashSet<string>();
         foreach (var candidatePath in this.GetCandidatePaths(args))
         {
@@ -69,6 +71,13 @@
           if (permissionDenied)
           {
             return; // found item exists, but we cannot touch it due to lack of permissions.
+          }
+
+          var ItemWasResolved = (bool) (Sitecore.Context.Items["sc_Support_218684_ItemResolved"] ?? false);
+
+          if (ItemWasResolved)
+          {
+            return; // found item exists, but there is no version and EnforceVersionPresence is enabled.
           }
         }
 
