@@ -15,6 +15,7 @@
   using Sitecore.StringExtensions;
   using Sitecore.Web;
   using Sitecore.Pipelines.HttpRequest;
+  using System.Threading;
 
   public class ItemResolver : Sitecore.Pipelines.HttpRequest.ItemResolver
   {
@@ -34,6 +35,48 @@
     }
     #endregion
 
+    protected override bool TryResolveItem([NotNull] string itemPath, [NotNull] HttpRequestArgs args, out Item item, out bool permissionDenied)
+    {
+      permissionDenied = false;
+
+      using (new EnforceVersionPresenceDisabler())
+      {
+        item = this.ItemManager.GetItem(itemPath, Sitecore.Context.Language, Data.Version.Latest, Sitecore.Context.Database, SecurityCheck.Disable);
+      }
+
+      if (item == null)
+      {
+        return false;
+      }
+
+      if (Sitecore.Context.Site != null && Sitecore.Context.Site.SiteInfo.EnforceVersionPresence)
+      {
+        bool IsItemEnforceVersionPresenceEnabled;
+        using (new EnforceVersionPresenceDisabler())
+        {
+          IsItemEnforceVersionPresenceEnabled = item != null && item.RuntimeSettings.TemporaryVersion && !item.Name.StartsWith("__") && ((BaseItem)item)[FieldIDs.EnforceVersionPresence] == "1";
+        }
+
+        if (IsItemEnforceVersionPresenceEnabled)
+        {
+          item = null; // was resolved without version.  
+          args.CustomData.Add("sc_Support_218684_versionRestriction", true);
+          return false;
+        }       
+      }
+
+      if (item.Access.CanRead())
+      {
+        return true;
+      }
+      else
+      {
+        permissionDenied = true;
+        item = null; // was resolved without security, and user cannot read it.                        
+        return false;
+      }
+    }
+
     public override void Process([NotNull] HttpRequestArgs args)
     {
       Assert.ArgumentNotNull(args, "args");
@@ -51,8 +94,6 @@
       try
       {
         this.StartProfilingOperation("Resolve current item.", args);
-
-        Sitecore.Context.Items["sc_Support_218684_ItemResolved"] = false;
 
         var uniquePaths = new HashSet<string>();
         foreach (var candidatePath in this.GetCandidatePaths(args))
@@ -73,9 +114,9 @@
             return; // found item exists, but we cannot touch it due to lack of permissions.
           }
 
-          var ItemWasResolved = (bool) (Sitecore.Context.Items["sc_Support_218684_ItemResolved"] ?? false);
+          var versionRestriction = (bool) (args.CustomData["sc_Support_218684_versionRestriction"] ?? false);
 
-          if (ItemWasResolved)
+          if (versionRestriction)
           {
             return; // found item exists, but there is no version and EnforceVersionPresence is enabled.
           }
